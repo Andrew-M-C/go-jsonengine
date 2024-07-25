@@ -18,5 +18,12 @@
 # vendor/
 
 # Go workspace file
-go.work
-go.work.sum
+# go.work
+# go.work.sum
+
+# Coverage file
+*.html
+*.prof
+
+# Hidden files
+.*
