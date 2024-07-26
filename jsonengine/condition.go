@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
 )
@@ -77,7 +78,11 @@ type Expr struct {
 	fieldChain  []field
 }
 
-func (e *Expr) match(v *jsonvalue.V) (bool, error) {
+type exprOption struct {
+	TimeFormat string
+}
+
+func (e *Expr) match(v *jsonvalue.V, opt exprOption) (bool, error) {
 	if e.fieldChain == nil {
 		e.fieldChain = parseField(e.Field)
 	}
@@ -93,7 +98,7 @@ func (e *Expr) match(v *jsonvalue.V) (bool, error) {
 
 	// 当前值比较
 	if len(e.fieldChain) == 0 {
-		return compare(v, e.Operator, e.targetValue)
+		return compare(v, e.Operator, e.targetValue, opt.TimeFormat)
 	}
 
 	// 以下层层匹配
@@ -111,7 +116,7 @@ func (e *Expr) match(v *jsonvalue.V) (bool, error) {
 			debug("Get and got error: '%v', top field '%v', value %v", err, top.Object, v)
 			return false, err
 		}
-		return subExpr.match(subV)
+		return subExpr.match(subV, opt)
 	}
 
 	// 以下是数组逻辑
@@ -123,7 +128,7 @@ func (e *Expr) match(v *jsonvalue.V) (bool, error) {
 	if top.Array.Any {
 		var lastErr error
 		for _, subV := range v.ForRangeArr() {
-			b, err := subExpr.match(subV)
+			b, err := subExpr.match(subV, opt)
 			if err != nil {
 				lastErr = err
 				continue
@@ -139,7 +144,7 @@ func (e *Expr) match(v *jsonvalue.V) (bool, error) {
 	// 数组中的每一个
 	if top.Array.All {
 		for _, subV := range v.ForRangeArr() {
-			b, err := subExpr.match(subV)
+			b, err := subExpr.match(subV, opt)
 			if err != nil {
 				return false, err
 			}
@@ -155,14 +160,14 @@ func (e *Expr) match(v *jsonvalue.V) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return subExpr.match(subV)
+	return subExpr.match(subV, opt)
 }
 
-func compare(v *jsonvalue.V, op string, target *jsonvalue.V) (bool, error) {
+func compare(v *jsonvalue.V, op string, target *jsonvalue.V, timeFmt string) (bool, error) {
 	switch op = strings.ToLower(strings.TrimSpace(op)); op {
 	default:
 		// 所有奇怪的符号都交给这里统一过滤
-		return compareNumber(v, op, target)
+		return compareNumber(v, op, target, timeFmt)
 
 	case "≹", "≸", "≠", "<>", "!=", "ne":
 		res := !v.Equal(target)
@@ -185,42 +190,82 @@ func compare(v *jsonvalue.V, op string, target *jsonvalue.V) (bool, error) {
 	}
 }
 
-func compareNumber(v *jsonvalue.V, op string, target *jsonvalue.V) (bool, error) {
-	if v.IsNumber() && target.IsNumber() {
-		// OK
-	} else {
-		return false, fmt.Errorf(
-			"%w, expected both value and target both number, but got (%v, %v)",
+func compareNumber(v *jsonvalue.V, op string, target *jsonvalue.V, timeFmt string) (bool, error) {
+	formatError := func() error {
+		return fmt.Errorf(
+			"%w, expected both value and target both number or timed string, but got (%v, %v)",
 			ErrTypeNotMatch, v.ValueType(), target.ValueType(),
 		)
 	}
 
+	debug("timeFmt: %s", timeFmt)
+
+	compareTime := false
+	var leftTime, rightTime time.Time
+	if v.IsNumber() && target.IsNumber() {
+		// OK
+	} else if timeFmt != "" && v.IsString() && target.IsString() {
+		var err error
+		if leftTime, err = time.Parse(timeFmt, v.String()); err != nil {
+			debug("parse time error: %v, source %v", err, v)
+			return false, formatError()
+		}
+		if rightTime, err = time.Parse(timeFmt, target.String()); err != nil {
+			debug("parse time error: %v, source %v", err, target)
+			return false, formatError()
+		}
+		compareTime = true
+	} else {
+		return false, formatError()
+	}
+
+	var res bool
 	switch op {
 	default:
 		return false, fmt.Errorf("%w (%s)", ErrIllegalOperator, op)
 
 	case "≶", "≷":
-		res := !v.Equal(target)
+		if compareTime {
+			res = leftTime.Equal(rightTime)
+		} else {
+			res = !v.Equal(target)
+		}
 		debug("%v != %v ? %v", v, target, res)
 		return res, nil
 
 	case "<", "≱", "lt":
-		res := v.Float64() < target.Float64()
+		if compareTime {
+			res = leftTime.Before(rightTime)
+		} else {
+			res = v.Float64() < target.Float64()
+		}
 		debug("%v < %v ? %v", v, target, res)
 		return res, nil
 
 	case "<=", "≤", "≦", "≯", "le":
-		res := v.Float64() <= target.Float64()
+		if compareTime {
+			res = !leftTime.After(rightTime)
+		} else {
+			res = v.Float64() <= target.Float64()
+		}
 		debug("%v <= %v ? %v", v, target, res)
 		return res, nil
 
 	case ">", "≰", "gt":
-		res := v.Float64() > target.Float64()
+		if compareTime {
+			res = leftTime.After(rightTime)
+		} else {
+			res = v.Float64() > target.Float64()
+		}
 		debug("%v > %v ? %v", v, target, res)
 		return res, nil
 
 	case ">=", "≥", "≧", "≮", "ge":
-		res := v.Float64() >= target.Float64()
+		if compareTime {
+			res = !leftTime.Before(rightTime)
+		} else {
+			res = v.Float64() >= target.Float64()
+		}
 		debug("%v >= %v ? %v", v, target, res)
 		return res, nil
 	}

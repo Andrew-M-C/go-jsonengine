@@ -57,9 +57,12 @@ func Match(value any, cond Condition, opts ...Option) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	o := mergeOptions(opts)
-	debug("options: %+v", o)
-	b, err := cond.Expr.match(v)
+
+	// debug("options: %+v, expr: %+v", o, cond.Expr)
+
+	b, err := cond.Expr.match(v, exprOption{TimeFormat: o.dateTimeFormat})
 	if err != nil {
 		// 继续错误类型检查
 		debug("got error: '%v'", err)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
 	"github.com/smartystreets/goconvey/convey"
@@ -23,7 +24,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestJSONEngine(t *testing.T) {
-	// debug = t.Logf
+	debug = t.Logf
 	cv("Match with simple Expr", t, func() { testJSONEngineMatchExpr(t) })
 	cv("Match with OR", t, func() { testJSONEngineMatchOR(t) })
 	cv("Match with AND", t, func() { testJSONEngineMatchAND(t) })
@@ -275,7 +276,7 @@ func testJSONEngineMatchWithMultipleEmbedding(t *testing.T) {
 }
 
 func testSQLStyleExpr(t *testing.T) {
-	iterateTestCases(t, "embed", []testCase{
+	iterateTestCases(t, "general", []testCase{
 		{
 			value:  `{"int":123456,"bool":false,"array":[{"int":11},{"int":22}]}`,
 			cond:   `{"or":[{"field":"array.[+].int","op":">","value":10},{"not":{"field":"int","op":">","value":100000}}]}`,
@@ -310,6 +311,45 @@ func testSQLStyleExpr(t *testing.T) {
 			value:  `{"int":123456,"bool":false,"array":[{"int":11},{"int":22}]}`,
 			cond:   `{"or":[["array.[+].int",">",10],["bool","=",true]]}`,
 			expect: true,
+		},
+	})
+
+	iterateTestCases(t, "time", []testCase{
+		{
+			value:  `{"time":"2024-01-01 12:34:56"}`,
+			cond:   `["time",">=","2024-01-01 12:34:56"]`,
+			opts:   []Option{OptDateTimeFormat(time.DateTime)},
+			expect: true,
+		},
+		{
+			value:  `{"time":"2024-01-01 12:34:56"}`,
+			cond:   `["time",">","2024-01-01 12:34:56"]`,
+			opts:   []Option{OptDateTimeFormat(time.DateTime)},
+			expect: false,
+		},
+		{
+			value:  `{"time":"2024-01-01"}`,
+			cond:   `["time",">=","2024-01-01"]`,
+			opts:   []Option{OptDateTimeFormat(time.DateOnly)},
+			expect: true,
+		},
+		{
+			value:  `{"time":"2024-01-01"}`,
+			cond:   `["time","<=","2024-01-01"]`,
+			opts:   []Option{OptDateTimeFormat(time.DateOnly)},
+			expect: true,
+		},
+		{
+			value:  `{"time":"2024-01-01"}`,
+			cond:   `["time",">","2024-01-01"]`,
+			opts:   []Option{OptDateTimeFormat(time.DateOnly)},
+			expect: false,
+		},
+		{
+			value:  `{"time":"2024-01-01"}`,
+			cond:   `["time","<","2024-01-01"]`,
+			opts:   []Option{OptDateTimeFormat(time.DateOnly)},
+			expect: false,
 		},
 	})
 }

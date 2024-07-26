@@ -1,5 +1,7 @@
 package jsonengine
 
+import "time"
+
 // ReturnType 表示如何返回
 type ReturnType uint
 
@@ -16,6 +18,7 @@ type Option func(*options)
 type options struct {
 	whenNotFound     ReturnType
 	whenTypeMismatch ReturnType
+	dateTimeFormat   string
 }
 
 // OptWhenNotFound 表示当查找不到值时, 如何返回
@@ -39,6 +42,19 @@ func OptWhenTypeMismatch(typ ReturnType) Option {
 		case ReturnFalse, ReturnError:
 			o.whenTypeMismatch = typ
 		}
+	}
+}
+
+// OptDateTimeFormat 表示时间格式, Go 格式, 用于当目标是 string 的时候, 检查是不是时间
+func OptDateTimeFormat(format string) Option {
+	s := time.Now().Format(format)
+	if _, err := time.Parse(format, s); err != nil {
+		debug("illegal time format '%s'", format)
+		return func(*options) { /* do nothing */ }
+	}
+	debug("valid time format '%s'", format)
+	return func(o *options) {
+		o.dateTimeFormat = format
 	}
 }
 
