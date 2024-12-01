@@ -351,5 +351,17 @@ func testSQLStyleExpr(t *testing.T) {
 			opts:   []Option{OptDateTimeFormat(time.DateOnly)},
 			expect: false,
 		},
+		{
+			value:  `{"time":"01-01"}`,
+			cond:   `["time",">=","01-01"]`,
+			opts:   []Option{OptDateTimeFormat("01-02")},
+			expect: true,
+		},
+		{
+			value:  `{"time":"01-01"}`,
+			cond:   `["time","<=","01-01"]`,
+			opts:   []Option{OptDateTimeFormat("01-02")},
+			expect: true,
+		},
 	})
 }
